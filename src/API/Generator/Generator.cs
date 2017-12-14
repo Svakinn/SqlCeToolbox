@@ -1500,6 +1500,7 @@ namespace ErikEJ.SqlCeScripting
                     }
                     GenerateIndex();
                     GenerateForeignKeys();
+                    GenerateViews(); //new
                 }
             }
             Helper.WriteIntoFile(GeneratedScript, _outFile, FileCounter, _sqlite);

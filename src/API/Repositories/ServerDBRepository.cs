@@ -5,6 +5,7 @@ using System.Data.SqlClient;
 using System.Text;
 using DbUp.Support.SqlServer;
 using System.IO;
+using System.Linq;
 
 namespace ErikEJ.SqlCeScripting
 {
@@ -169,18 +170,18 @@ namespace ErikEJ.SqlCeScripting
             string uniqueTable = dr.GetString(3);
             if (_keepSchemaName)
             {
-                table = dr.GetString(10) + "." + table;
-                uniqueTable = dr.GetString(10) + "." + uniqueTable;
+                table = dr.GetString(8) + "." + table;  //bugfix foreign keys do not have to reference tables in same schema
+                uniqueTable = dr.GetString(9) + "." + uniqueTable;
             }
 
             list.Add(new Constraint
             {
                 ConstraintTableName = table
                 , ConstraintName = dr.GetString(1)
-                , ColumnName = string.Format(System.Globalization.CultureInfo.InvariantCulture, "[{0}]", dr.GetString(2))
+                , ColumnName =  dr.GetString(2) // what is this for ?? string.Format(System.Globalization.CultureInfo.InvariantCulture, "[{0}]",
                 , UniqueConstraintTableName = uniqueTable
                 , UniqueConstraintName = dr.GetString(4)
-                , UniqueColumnName = string.Format(System.Globalization.CultureInfo.InvariantCulture, "[{0}]", dr.GetString(5))
+                , UniqueColumnName =  dr.GetString(5) //string.Format(System.Globalization.CultureInfo.InvariantCulture, "[{0}]",
                 , UpdateRule = dr.GetString(6)
                 , DeleteRule  = dr.GetString(7)
                 , Columns = new ColumnList()
@@ -218,6 +219,18 @@ namespace ErikEJ.SqlCeScripting
                 ColumnName = dr.GetString(0),
                 KeyName = dr.GetString(1),
                 TableName = table
+            });
+        }
+
+        private void AddToListViews(ref List<View> list, SqlDataReader dr)
+        {
+            string view = dr.GetString(1);
+            if (_keepSchemaName)
+                view = dr.GetString(0) + "." + view;
+            list.Add(new View
+            {
+                ViewName = view,
+                Definition = dr.GetString(2)
             });
         }
 
@@ -317,6 +330,8 @@ namespace ErikEJ.SqlCeScripting
             return (ExecuteScalar("SELECT is_identity FROM sys.columns INNER JOIN sys.objects ON sys.columns.object_id = sys.objects.object_id WHERE sys.objects.name = '" + tableName + "' AND sys.objects.type = 'U' AND sys.columns.is_identity = 1") != null);
         }
 
+        #region table meta
+
         public List<string> GetAllTableNames()
         {
             return ExecuteReader(
@@ -331,30 +346,6 @@ namespace ErikEJ.SqlCeScripting
                 , new AddToListDelegate<string>(AddToListString));
         }
 
-        public List<string> GetAllSubscriptionNames()
-        {
-            return new List<string>();
-        }
-
-        public List<View> GetAllViews()
-        {
-            return new List<View>();
-        }
-
-        public List<Column> GetAllViewColumns()
-        {
-            return new List<Column>();
-        }
-
-        public List<Trigger> GetAllTriggers()
-        {
-            return new List<Trigger>();
-        }
-
-        public List<KeyValuePair<string, string>> GetDatabaseInfo()
-        {
-            return new List<KeyValuePair<string,string>>();
-        }
 
         public List<Column> GetAllColumns()
         {
@@ -394,9 +385,277 @@ namespace ErikEJ.SqlCeScripting
                 AND tab.type = 'U' AND is_ms_shipped = 0 
                 AND (cc.is_computed = 1 AND cc.is_persisted = 1)
                 AND DATA_TYPE <> 'sql_variant' 
+				ORDER BY col.TABLE_NAME, col.ORDINAL_POSITION ASC "
+                , new AddToListDelegate<Column>(AddToListColumns));
+        }
+
+        /// <summary>
+        /// Get details for one table
+        /// WARNING: the db query from table name is not parameter safe. Never pass in user input here !
+        /// </summary>
+        /// <param name="tableName"> tableName includes scema.. is of the form: schema.table</param>
+        /// <returns></returns>
+        public TabDetails GetTableDetails(string tableName)
+        {
+            var ret = new TabDetails();
+            string schema = "";
+            string tabName = "";
+            splitSchemaTab(tableName, ref schema, ref tabName);
+            var tList = ExecuteReader(
+                 @"SELECT S.name + '.' + T.name  from sys.tables T INNER JOIN sys.schemas S ON T.schema_id = S.schema_id WHERE [type] = 'U' AND is_ms_shipped = 0  and S.name = '" + schema + "' and T.name = '" + tabName + "';"
+    ,        new AddToListDelegate<string>(AddToListString));
+            if (tList.Count > 0)
+            {
+                ret.Schema = schema;
+                ret.TableName = tabName;
+
+                ret.Columns.AddRange(ExecuteReader(@"SELECT COLUMN_NAME, col.IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 
+                AUTOINC_INCREMENT =  CASE cols.is_identity  WHEN 0 THEN 0 WHEN 1 THEN IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                AUTOINC_SEED =     CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_SEED('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                COLUMN_HASDEFAULT =  CASE WHEN col.COLUMN_DEFAULT IS NULL THEN CAST(0 AS bit) ELSE CAST (1 AS bit) END, COLUMN_DEFAULT, 
+                COLUMN_FLAGS = CASE cols.is_rowguidcol WHEN 0 THEN 0 ELSE 378 END,
+                NUMERIC_SCALE, col.TABLE_NAME, 
+                AUTOINC_NEXT = CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_CURRENT('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') + IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') END, 
+                col.TABLE_SCHEMA, col.ORDINAL_POSITION
+                FROM INFORMATION_SCHEMA.COLUMNS col  
+                JOIN sys.columns cols on col.COLUMN_NAME = cols.name 
+                AND cols.object_id = OBJECT_ID('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  
+                JOIN sys.schemas schms on schms.name = col.TABLE_SCHEMA                
+                JOIN sys.tables tab ON col.TABLE_NAME = tab.name and tab.schema_id = schms.schema_id 
+                WHERE SUBSTRING(COLUMN_NAME, 1,5) <> '__sys' 
+                AND tab.type = 'U' AND is_ms_shipped = 0 
+                AND (cols.is_computed = 0)
+                AND DATA_TYPE <> 'sql_variant' 
+                AND schms.name name = '" + schema + @"'
+                AND tab.name name = '" + tabName + @"' 
+				UNION 
+                SELECT COLUMN_NAME, col.IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 
+                AUTOINC_INCREMENT =  CASE cols.is_identity  WHEN 0 THEN 0 WHEN 1 THEN IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                AUTOINC_SEED =     CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_SEED('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                COLUMN_HASDEFAULT =  CASE WHEN col.COLUMN_DEFAULT IS NULL THEN CAST(0 AS bit) ELSE CAST (1 AS bit) END, COLUMN_DEFAULT, 
+                COLUMN_FLAGS = CASE cols.is_rowguidcol WHEN 0 THEN 0 ELSE 378 END,
+                NUMERIC_SCALE, col.TABLE_NAME, 
+                AUTOINC_NEXT = CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_CURRENT('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') + IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') END, 
+                col.TABLE_SCHEMA, col.ORDINAL_POSITION
+                FROM INFORMATION_SCHEMA.COLUMNS col  
+                JOIN sys.columns cols on col.COLUMN_NAME = cols.name 
+                AND cols.object_id = OBJECT_ID('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  
+                JOIN sys.schemas schms on schms.name = col.TABLE_SCHEMA                
+                JOIN sys.tables tab ON col.TABLE_NAME = tab.name and tab.schema_id = schms.schema_id 
+			    JOIN sys.computed_columns cc on cc.object_id = cols.object_id 
+                WHERE SUBSTRING(COLUMN_NAME, 1,5) <> '__sys' 
+                AND tab.type = 'U' AND is_ms_shipped = 0 
+                AND (cc.is_computed = 1 AND cc.is_persisted = 1)
+                AND DATA_TYPE <> 'sql_variant' 
+                AND schms.name name = '" + schema + @"'
+                AND tab.name name = '" + tabName + @"' 
+				ORDER BY col.TABLE_NAME, col.ORDINAL_POSITION ASC "
+                , new AddToListDelegate<Column>(AddToListColumns)));
+
+                ret.Indexes.AddRange(ExecuteReader(@"SELECT T.name TABLE_NAME, i.name as INDEX_NAME,
+                0 AS PRIMARY_KEY,i.is_unique AS [UNIQUE], CAST(0 AS bit) AS [CLUSTERED],
+                CAST(ic.key_ordinal AS int) AS ORDINAL_POSITION, c.name AS COLUMN_NAME, ic.is_descending_key AS SORT_ORDER, '" + tableName + @"' AS original 
+                from sys.tables T
+                 INNER JOIN sys.schemas S ON T.schema_id = S.schema_id and T.[type] = 'U' AND t.is_ms_shipped = 0
+                inner join sys.indexes i on i.object_id = t.object_id and i.is_disabled = 0 AND i.is_hypothetical = 0 AND i.name IS NOT NULL AND i.is_primary_key = 0 AND i.type IN(1, 2)
+                left outer join sys.index_columns ic on i.object_id = ic.object_id and i.index_id = ic.index_id AND ic.is_included_column = 0
+                left outer join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id and c.is_computed = 0
+                where S.name = '" + schema + @"' and T.name = '" + tabName + @"'
+                order by s.name, t.name, i.name,  case ic.key_ordinal when 0 then 256 else ic.key_ordinal end"
+                , new AddToListDelegate<Index>(AddToListIndexes)) );
+
+                ret.PrimaryKeys.AddRange(ExecuteReader(@"SELECT u.COLUMN_NAME, c.CONSTRAINT_NAME, c.TABLE_NAME, c.CONSTRAINT_SCHEMA
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS c INNER JOIN
+                INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS u ON c.CONSTRAINT_NAME = u.CONSTRAINT_NAME AND u.TABLE_NAME = c.TABLE_NAME
+                where c.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                and u.TABLE_SCHEMA =  '" + schema + @"' and u.TABLE_NAME = '" + tabName + @"'
+                ORDER BY u.TABLE_NAME, c.CONSTRAINT_NAME, u.ORDINAL_POSITION"
+                , new AddToListDelegate<PrimaryKey>(AddToListPrimaryKeys)) );
+
+                var fatList = ExecuteReader(@"SELECT tf.name AS FK_TABLE_NAME, f.name AS FK_CONSTRAINT_NAME,
+                COL_NAME(fc.parent_object_id, fc.parent_column_id) AS FK_COLUMN_NAME,
+		         t.name AS UQ_TABLE_NAME,  '' AS UQ_CONSTRAINT_NAME, 
+		        COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS UQ_COLUMN_NAME,  
+                REPLACE(f.update_referential_action_desc,'_',' ') AS UPDATE_RULE, REPLACE(f.delete_referential_action_desc,'_',' ') AS DELETE_RULE, 
+                s.name as UQSchemaName, sf.name as FKSchemaName 
+                FROM sys.tables T 
+		        INNER JOIN sys.schemas S ON T.schema_id = S.schema_id 
+		        inner join sys.foreign_keys AS f on f.parent_object_id = t.object_id and f.is_disabled = 0
+		        inner join sys.tables tf on tf.object_id = f.referenced_object_id
+		        inner join sys.schemas sf on sf.schema_id = tf.schema_id
+		        INNER JOIN sys.foreign_key_columns AS fc ON f.OBJECT_ID = fc.constraint_object_id and fc.parent_object_id = t.object_id 
+                WHERE S.name =  =  '" + schema + @"' and 
+                T.name =  '" + tabName + @"' and 
+                T.[type] = 'U' AND t.is_ms_shipped = 0 
+                ORDER BY FKSchemaName, FK_TABLE_NAME, FK_CONSTRAINT_NAME, fc.constraint_column_id"
+                , new AddToListDelegate<Constraint>( AddToListConstraints) );
+                //Right no we have all columns joined in.. the task to remove duplicates records by FK_constraint_name and populate the columns and UniQueColumns
+                 ret.Constraints = RepositoryHelper.GetGroupForeingKeys(fatList, fatList.Select(t => t.ConstraintTableName).Distinct().ToList());
+            }
+            return ret;
+        }
+
+        #endregion
+
+        #region view meta
+
+        public List<string> GetAllViewNamesForExclusion()
+        {
+            return ExecuteReader(
+                "SELECT S.name + '.' + T.name  from sys.views T INNER JOIN sys.schemas S ON T.schema_id = S.schema_id WHERE [type] = 'V' AND is_ms_shipped = 0 ORDER BY S.name, T.[name];"
+                , new AddToListDelegate<string>(AddToListString));
+        }
+
+        public List<string> GetAllSubscriptionNames()
+        {
+            return new List<string>();
+        }
+
+        public List<View> GetAllViews()
+        {
+            return ExecuteReader(
+                "SELECT S.name as SName, T.name as TName, M.[definition] as Def  from sys.views T INNER JOIN sys.schemas S ON T.schema_id = S.schema_id  left outer join sys.sql_modules M on M.object_id = T.object_id WHERE T.[type] = 'V' AND T.is_ms_shipped = 0 ORDER BY S.name, T.[name];"
+                , new AddToListDelegate<View>(AddToListViews));
+        }
+
+        public List<Column> GetAllViewColumns()
+        {
+            return ExecuteReader(@"SELECT COLUMN_NAME, col.IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 
+                AUTOINC_INCREMENT =  CASE cols.is_identity  WHEN 0 THEN 0 WHEN 1 THEN IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                AUTOINC_SEED =     CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_SEED('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                COLUMN_HASDEFAULT =  CASE WHEN col.COLUMN_DEFAULT IS NULL THEN CAST(0 AS bit) ELSE CAST (1 AS bit) END, COLUMN_DEFAULT, 
+                COLUMN_FLAGS = CASE cols.is_rowguidcol WHEN 0 THEN 0 ELSE 378 END,
+                NUMERIC_SCALE, col.TABLE_NAME, 
+                AUTOINC_NEXT = CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_CURRENT('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') + IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') END, 
+                col.TABLE_SCHEMA, col.ORDINAL_POSITION
+                FROM INFORMATION_SCHEMA.COLUMNS col  
+                JOIN sys.columns cols on col.COLUMN_NAME = cols.name 
+                AND cols.object_id = OBJECT_ID('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  
+                JOIN sys.schemas schms on schms.name = col.TABLE_SCHEMA                
+                JOIN sys.views tab ON col.TABLE_NAME = tab.name and tab.schema_id = schms.schema_id 
+                WHERE SUBSTRING(COLUMN_NAME, 1,5) <> '__sys' 
+                AND tab.type = 'V' AND is_ms_shipped = 0 
+                AND (cols.is_computed = 0)
+                AND DATA_TYPE <> 'sql_variant' 
+				UNION 
+                SELECT COLUMN_NAME, col.IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 
+                AUTOINC_INCREMENT =  CASE cols.is_identity  WHEN 0 THEN 0 WHEN 1 THEN IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                AUTOINC_SEED =     CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_SEED('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                COLUMN_HASDEFAULT =  CASE WHEN col.COLUMN_DEFAULT IS NULL THEN CAST(0 AS bit) ELSE CAST (1 AS bit) END, COLUMN_DEFAULT, 
+                COLUMN_FLAGS = CASE cols.is_rowguidcol WHEN 0 THEN 0 ELSE 378 END,
+                NUMERIC_SCALE, col.TABLE_NAME, 
+                AUTOINC_NEXT = CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_CURRENT('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') + IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') END, 
+                col.TABLE_SCHEMA, col.ORDINAL_POSITION
+                FROM INFORMATION_SCHEMA.COLUMNS col  
+                JOIN sys.columns cols on col.COLUMN_NAME = cols.name 
+                AND cols.object_id = OBJECT_ID('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  
+                JOIN sys.schemas schms on schms.name = col.TABLE_SCHEMA                
+                JOIN sys.views tab ON col.TABLE_NAME = tab.name and tab.schema_id = schms.schema_id 
+			    JOIN sys.computed_columns cc on cc.object_id = cols.object_id 
+                WHERE SUBSTRING(COLUMN_NAME, 1,5) <> '__sys' 
+                AND tab.type = 'V' AND is_ms_shipped = 0 
+                AND (cc.is_computed = 1 AND cc.is_persisted = 1)
+                AND DATA_TYPE <> 'sql_variant' 
 				ORDER BY col.TABLE_NAME, col.ORDINAL_POSITION ASC
 "
                 , new AddToListDelegate<Column>(AddToListColumns));
+        }
+
+        /// <summary>
+        /// Gets view details for one view
+        /// WARNING: the db query from view name is not parameter safe. Never pass in user input here !
+        /// </summary>
+        /// <param name="viewName">viewName includes scema.. is of the form: schema.view</param>
+        /// <returns></returns>
+        public ViewDetails GetViewDetails(string viewName)
+        {
+            var ret = new ViewDetails();
+            string schema = "";
+            string tabName = "";
+            splitSchemaTab(viewName, ref schema, ref tabName);
+            var wList = ExecuteReader(
+                "SELECT S.name as SName, T.name as TName, M.[definition] as Def  from sys.views T INNER JOIN sys.schemas S ON T.schema_id = S.schema_id  left outer join sys.sql_modules M on M.object_id = T.object_id WHERE T.[type] = 'V' AND T.is_ms_shipped = 0 and s.name = '" + schema + "' and T.name = '" + tabName + "';"
+                , new AddToListDelegate<View>(AddToListViews));
+            if (wList.Count > 0)
+            {
+                ret.Schema = schema;
+                ret.ViewName = tabName;
+                ret.Definition = wList[0].Definition;
+
+                ret.Columns.AddRange(ExecuteReader(@"SELECT COLUMN_NAME, col.IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 
+                AUTOINC_INCREMENT =  CASE cols.is_identity  WHEN 0 THEN 0 WHEN 1 THEN IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                AUTOINC_SEED =     CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_SEED('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                COLUMN_HASDEFAULT =  CASE WHEN col.COLUMN_DEFAULT IS NULL THEN CAST(0 AS bit) ELSE CAST (1 AS bit) END, COLUMN_DEFAULT, 
+                COLUMN_FLAGS = CASE cols.is_rowguidcol WHEN 0 THEN 0 ELSE 378 END,
+                NUMERIC_SCALE, col.TABLE_NAME, 
+                AUTOINC_NEXT = CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_CURRENT('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') + IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') END, 
+                col.TABLE_SCHEMA, col.ORDINAL_POSITION
+                FROM INFORMATION_SCHEMA.COLUMNS col  
+                JOIN sys.columns cols on col.COLUMN_NAME = cols.name 
+                AND cols.object_id = OBJECT_ID('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  
+                JOIN sys.schemas schms on schms.name = col.TABLE_SCHEMA                
+                JOIN sys.views tab ON col.TABLE_NAME = tab.name and tab.schema_id = schms.schema_id 
+                WHERE SUBSTRING(COLUMN_NAME, 1,5) <> '__sys' 
+                AND tab.type = 'V' AND is_ms_shipped = 0 
+                AND (cols.is_computed = 0)
+                AND DATA_TYPE <> 'sql_variant' 
+                AND schms.name name = '" + schema + @"'
+                AND tab.name name = '" + tabName + @"' 
+                UNION 
+                SELECT COLUMN_NAME, col.IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 
+                AUTOINC_INCREMENT =  CASE cols.is_identity  WHEN 0 THEN 0 WHEN 1 THEN IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                AUTOINC_SEED =     CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_SEED('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
+                COLUMN_HASDEFAULT =  CASE WHEN col.COLUMN_DEFAULT IS NULL THEN CAST(0 AS bit) ELSE CAST (1 AS bit) END, COLUMN_DEFAULT, 
+                COLUMN_FLAGS = CASE cols.is_rowguidcol WHEN 0 THEN 0 ELSE 378 END,
+                NUMERIC_SCALE, col.TABLE_NAME, 
+                AUTOINC_NEXT = CASE cols.is_identity WHEN 0 THEN 0 WHEN 1 THEN IDENT_CURRENT('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') + IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']') END, 
+                col.TABLE_SCHEMA, col.ORDINAL_POSITION
+                FROM INFORMATION_SCHEMA.COLUMNS col  
+                JOIN sys.columns cols on col.COLUMN_NAME = cols.name 
+                AND cols.object_id = OBJECT_ID('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  
+                JOIN sys.schemas schms on schms.name = col.TABLE_SCHEMA                
+                JOIN sys.views tab ON col.TABLE_NAME = tab.name and tab.schema_id = schms.schema_id 
+			    JOIN sys.computed_columns cc on cc.object_id = cols.object_id 
+                WHERE SUBSTRING(COLUMN_NAME, 1,5) <> '__sys' 
+                AND tab.type = 'V' AND is_ms_shipped = 0 
+                AND (cc.is_computed = 1 AND cc.is_persisted = 1)
+                AND DATA_TYPE <> 'sql_variant' 
+                AND schms.name name = '" + schema + @"'
+                AND tab.name name = '" + tabName + @"' 
+				ORDER BY col.TABLE_NAME, col.ORDINAL_POSITION ASC "
+                , new AddToListDelegate<Column>(AddToListColumns)));
+            }
+            return ret;
+        }
+
+        #endregion
+
+        public List<Trigger> GetAllTriggers()
+        {
+            return new List<Trigger>();
+        } 
+
+        public List<KeyValuePair<string, string>> GetDatabaseInfo()
+        {
+            return new List<KeyValuePair<string,string>>();
+        }
+
+        private string cleanParmVal(string parm)
+        {
+            return parm.Replace("]", "").Replace("[", "").Replace("'", "").Replace("\\", "");
+        }
+        private void splitSchemaTab(string sTab, ref string schema, ref string table)
+        {
+            var spl = sTab.Split('.');
+            if (spl.Length > 1)
+            {
+                table = cleanParmVal(spl[1]);
+                schema = cleanParmVal(spl[0]);
+            }
+            else
+            {
+                table = cleanParmVal(sTab);
+            }
         }
 
         public DataTable GetDataFromTable(string tableName, List<Column> tableColumns)
@@ -484,17 +743,20 @@ namespace ErikEJ.SqlCeScripting
         public List<Constraint> GetAllForeignKeys()
         {
             var list = ExecuteReader(
-                "SELECT OBJECT_NAME(f.parent_object_id) AS FK_TABLE_NAME, f.name AS FK_CONSTRAINT_NAME, " +
-                "COL_NAME(fc.parent_object_id, fc.parent_column_id) AS FK_COLUMN_NAME, OBJECT_NAME(f.referenced_object_id) AS UQ_TABLE_NAME,  " +
-                "'' AS UQ_CONSTRAINT_NAME, COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS UQ_COLUMN_NAME,  " +
-                "REPLACE(f.update_referential_action_desc,'_',' ') AS UPDATE_RULE, REPLACE(f.delete_referential_action_desc,'_',' ') AS DELETE_RULE, 1, 1, " +
-                " OBJECT_SCHEMA_NAME(f.referenced_object_id) " +
-                "FROM sys.foreign_keys AS f INNER JOIN sys.foreign_key_columns AS fc ON f.OBJECT_ID = fc.constraint_object_id  " +
-                "JOIN sys.schemas schms on schms.name = OBJECT_SCHEMA_NAME(f.referenced_object_id) " +
-                "JOIN sys.tables tab ON OBJECT_NAME(f.referenced_object_id) = tab.name and tab.schema_id = schms.schema_id " +
-                "WHERE is_disabled = 0  " +
-                "AND tab.is_ms_shipped = 0 AND tab.type = 'U' " +
-                "ORDER BY FK_TABLE_NAME, FK_CONSTRAINT_NAME, fc.constraint_column_id"
+                @"SELECT tf.name AS FK_TABLE_NAME, f.name AS FK_CONSTRAINT_NAME,
+                 COL_NAME(fc.parent_object_id, fc.parent_column_id) AS FK_COLUMN_NAME,
+                T.name AS UQ_TABLE_NAME, '' AS UQ_CONSTRAINT_NAME,
+                COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS UQ_COLUMN_NAME,
+                REPLACE(f.update_referential_action_desc, '_', ' ') AS UPDATE_RULE, REPLACE(f.delete_referential_action_desc, '_', ' ') AS DELETE_RULE,
+                s.name as UQSchemaName, sf.name as FKSchemaName
+                FROM sys.tables T
+                INNER JOIN sys.schemas S ON T.schema_id = S.schema_id
+                inner join sys.foreign_keys AS f on f.parent_object_id = t.object_id and f.is_disabled = 0
+                inner join sys.tables tf on tf.object_id = f.referenced_object_id
+                inner join sys.schemas sf on sf.schema_id = tf.schema_id
+                INNER JOIN sys.foreign_key_columns AS fc ON f.OBJECT_ID = fc.constraint_object_id and fc.parent_object_id = t.object_id
+                WHERE T.[type] = 'U' AND t.is_ms_shipped = 0
+                ORDER BY FKSchemaName, FK_TABLE_NAME, FK_CONSTRAINT_NAME, fc.constraint_column_id"
                 , new AddToListDelegate<Constraint>(AddToListConstraints));
             return RepositoryHelper.GetGroupForeingKeys(list, GetAllTableNames());
         }

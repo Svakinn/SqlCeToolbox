@@ -81,7 +81,7 @@
     <CodeAnalysisFailOnMissingRules>false</CodeAnalysisFailOnMissingRules>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x86'">
-    <OutputPath>bin\x86\Release\</OutputPath>
+    <OutputPath>..\bin\x86\Release\</OutputPath>
     <DefineConstants>TRACE;V40</DefineConstants>
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>

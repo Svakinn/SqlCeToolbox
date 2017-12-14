@@ -42,13 +42,9 @@ namespace EFCorePowerTools.Handlers
                     return;
                 }
 
-                var ptd = new PickTablesDialog();
-                using (var repository = RepositoryHelper.CreateRepository(dbInfo))
-                {
-                    ptd.Tables = repository.GetAllTableNamesForExclusion();
-                }
-
+                var ptd = new PickTablesDialog(dbInfo);
                 var res = ptd.ShowModal();
+
                 if (!res.HasValue || !res.Value) return;
 
                 var name = RepositoryHelper.GetClassBasis(dbInfo.ConnectionString, dbInfo.DatabaseType);

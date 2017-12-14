@@ -8,6 +8,7 @@ namespace ErikEJ.SqlCeScripting
     {
         List<string> GetAllTableNames();
         List<string> GetAllTableNamesForExclusion();
+        List<string> GetAllViewNamesForExclusion();
         List<Column> GetAllColumns();
         List<View> GetAllViews();
         List<Column> GetAllViewColumns();
@@ -21,6 +22,10 @@ namespace ErikEJ.SqlCeScripting
         List<Index> GetIndexesFromTable(string tableName);
         List<Index> GetAllIndexes();
         List<KeyValuePair<string, string>> GetDatabaseInfo();
+        //Tab/View info
+        ViewDetails GetViewDetails(string viewName);
+        TabDetails GetTableDetails(string tableName);
+        //ToDo: Stored Procedures and Functions, even Sequences and Synonim
         bool HasIdentityColumn(string tableName);
         bool IsServer();
         bool KeepSchema();

@@ -99,11 +99,13 @@
     <Compile Include="Models\Column.cs" />
     <Compile Include="Models\ColumnList.cs" />
     <Compile Include="Models\Constraint.cs" />
+    <Compile Include="Models\TabDetails.cs" />
     <Compile Include="Models\Trigger.cs" />
     <Compile Include="Models\View.cs" />
     <Compile Include="Models\DbDescription.cs" />
     <Compile Include="Models\Index.cs" />
     <Compile Include="Models\PrimaryKey.cs" />
+    <Compile Include="Models\ViewDetails.cs" />
     <Compile Include="Models\YesNoOptionEnum.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Repositories\IRepository.cs" />

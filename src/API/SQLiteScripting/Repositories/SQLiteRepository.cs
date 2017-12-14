@@ -50,10 +50,29 @@ namespace ErikEJ.SQLiteScripting
             list.Sort();
             return list;
         }
+        public List<string> GetAllViewNames()
+        {
+            var list = new List<string>();
+            //Also contains TABLE_DEFINITION!
+            var dt = _cn.GetSchema("Tables");
+            for (int i = 0; i < dt.Rows.Count; i++)
+            {
+                if (dt.Rows[i]["TABLE_TYPE"].ToString() == "view")
+                {
+                    list.Add(dt.Rows[i]["TABLE_NAME"].ToString());
+                }
+            }
+            list.Sort();
+            return list;
+        }
 
         public List<string> GetAllTableNamesForExclusion()
         {
             return GetAllTableNames();
+        }
+        public List<string> GetAllViewNamesForExclusion()
+        {
+            return GetAllViewNames();
         }
 
         public List<View> GetAllViews()
@@ -462,6 +481,16 @@ namespace ErikEJ.SQLiteScripting
                 valueList.Add(new KeyValuePair<string, string>("Created", fi.CreationTime.ToShortDateString() + " " + fi.CreationTime.ToShortTimeString()));
             }
             return valueList;
+        }
+
+        public TabDetails GetTableDetails(string tableName)
+        {
+            return new TabDetails();
+        }
+
+        public ViewDetails GetViewDetails(string tableName)
+        {
+            return new ViewDetails();
         }
 
         public bool HasIdentityColumn(string tableName)

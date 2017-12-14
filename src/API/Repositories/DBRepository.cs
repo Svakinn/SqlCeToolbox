@@ -279,13 +279,25 @@ namespace ErikEJ.SqlCeScripting
         public List<string> GetAllTableNames()
         {
             return ExecuteReader(
-                "SELECT table_name FROM information_schema.tables WHERE TABLE_TYPE <> N'SYSTEM TABLE' "
+                "SELECT table_name FROM information_schema.tables WHERE TABLE_TYPE <> N'SYSTEM TABLE' and TABLE_TYPE <> N'VIEW' "
+                , new AddToListDelegate<string>(AddToListString));
+        }
+
+        public List<string> GetAllViewNames()
+        {
+            return ExecuteReader(
+                "SELECT table_name FROM information_schema.tables WHERE TABLE_TYPE = N'VIEW' "
                 , new AddToListDelegate<string>(AddToListString));
         }
 
         public List<string> GetAllTableNamesForExclusion()
         {
             return GetAllTableNames();
+        }
+
+        public List<string> GetAllViewNamesForExclusion()
+        {
+            return GetAllViewNames();
         }
 
         public List<string> GetAllSubscriptionNames()
@@ -493,6 +505,14 @@ namespace ErikEJ.SqlCeScripting
             return new List<Column>();
         }
 
+        public TabDetails GetTableDetails(string tableName)
+        {
+            return new TabDetails();
+        }
+        public ViewDetails GetViewDetails(string tableName)
+        {
+            return new ViewDetails();
+        }
         public List<Trigger> GetAllTriggers()
         {
             return new List<Trigger>();

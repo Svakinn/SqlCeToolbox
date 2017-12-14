@@ -7,7 +7,8 @@ using ErikEJ.SqlCeScripting;
 
 public class SQLiteScriptingTests
 {
-    private const string dbPath = @"C:\Code\SqlCeToolbox\src\API\SqlCeScripting40\Tests\";
+    //private const string dbPath = @"C:\Code\SqlCeToolbox\src\API\SqlCeScripting40\Tests\";
+    private const string dbPath = @"C:\TFSSvaki\SqlCeToolbox\src\API\SqlCeScripting40\Tests\";
 
     private string chinookConnectionString = string.Format(
         @"Data Source={0}chinook.db", dbPath);
