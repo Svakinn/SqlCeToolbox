@@ -50,6 +50,7 @@ namespace ErikEJ.SQLiteScripting
             list.Sort();
             return list;
         }
+
         public List<string> GetAllViewNames()
         {
             var list = new List<string>();
@@ -97,7 +98,7 @@ namespace ErikEJ.SQLiteScripting
         /// <param name="strCatalog">The catalog (attached database) to retrieve views on</param>
         /// <param name="strView">The view name, can be null</param>
         /// <returns>DataTable</returns>
-        private DataTable Schema_Views(SQLiteConnection cn)
+        private DataTable Schema_Views(SQLiteConnection cn, string tableName = null)
         {
             DataTable tbl = new DataTable("Views");
             DataRow row;
@@ -116,8 +117,11 @@ namespace ErikEJ.SQLiteScripting
             tbl.Columns.Add("DATE_MODIFIED", typeof(DateTime));
 
             tbl.BeginLoadData();
-
-            using (SQLiteCommand cmd = new SQLiteCommand(string.Format(CultureInfo.InvariantCulture, "SELECT * FROM [main].[sqlite_master] WHERE [type] LIKE 'view'")))
+            // tbl_name
+            String sql = @"SELECT * FROM [main].[sqlite_master] WHERE [type] LIKE 'view'";
+            if (!string.IsNullOrWhiteSpace(tableName))
+                sql += @" and tbl_name = '"+ tableName+"' ";
+            using (SQLiteCommand cmd = new SQLiteCommand(string.Format(CultureInfo.InvariantCulture, sql)))
             {
                 cmd.Connection = cn;
                 using (SQLiteDataReader rd = cmd.ExecuteReader())
@@ -168,27 +172,29 @@ namespace ErikEJ.SQLiteScripting
         }
 
 
-//GetSchema returns a DataTable that contains information about the tables, columns, or whatever you specify. 
-//Valid GetSchema arguments for SQLite include:
-//•DataTypes
-//•ReservedWords
+        //GetSchema returns a DataTable that contains information about the tables, columns, or whatever you specify. 
+        //Valid GetSchema arguments for SQLite include:
+        //•DataTypes
+        //•ReservedWords
 
         public List<Column> GetAllColumns()
         {
             return GetListOfColumns("Columns");
         }
 
-        private List<Column> GetListOfColumns(string schemaView)
+        private List<Column> GetListOfColumns(string schemaView, string tableName = null)
         {
             var result = new List<Column>();
             var dt = _cn.GetSchema(schemaView);
-
-            //var tables = _cn.GetSchema("Tables");
-            //for (int i = 0; i < dt.Columns.Count; i++)
-            //{
-            //    System.Diagnostics.Debug.WriteLine(dt.Columns[i].ColumnName);
-            //}
-
+            var rows = dt.AsEnumerable();
+            if (!string.IsNullOrEmpty(tableName))
+            {
+                if (schemaView == "Columns")
+                    rows = rows.Where(row => row.Field<String>("TABLE_NAME") == tableName).OrderBy(row => row.Field<int>("ORDINAL_POSITION"));
+                else //vieww
+                    rows = rows.Where(row => row.Field<String>("VIEW_NAME") == tableName).OrderBy(row => row.Field<int>("ORDINAL_POSITION"));
+                dt = rows.Any() ? rows.CopyToDataTable() : dt.Clone();
+            }
             for (int i = 0; i < dt.Rows.Count; i++)
             {
                 var col = new Column();
@@ -302,7 +308,7 @@ namespace ErikEJ.SQLiteScripting
             if (tablePrimaryKeys.Count > 0)
             {
                 sb.Append(" ORDER BY ");
-                tablePrimaryKeys.ForEach(delegate(PrimaryKey column)
+                tablePrimaryKeys.ForEach(delegate (PrimaryKey column)
                 {
                     sb.AppendFormat("[{0}],", column.ColumnName);
                 });
@@ -348,19 +354,26 @@ namespace ErikEJ.SQLiteScripting
 
         public List<PrimaryKey> GetAllPrimaryKeys()
         {
+            return GetPrimaryKeys();
+        }
+
+        private  List<PrimaryKey> GetPrimaryKeys(string tableName = null) { 
             var result = new List<PrimaryKey>();
 
             var indexes = _cn.GetSchema("Indexes");
             var rows = indexes.AsEnumerable()
                     .Where(row => row.Field<bool>("PRIMARY_KEY"));
+            if (!string.IsNullOrEmpty(tableName))
+                rows = rows.Where(row => row.Field<String>("TABLE_NAME") == tableName);
             indexes = rows.Any() ? rows.CopyToDataTable() : indexes.Clone();
 
             var dt = _cn.GetSchema("Columns");
-            rows = dt.AsEnumerable()
-                .Where(row => row.Field<bool>("PRIMARY_KEY"))
+            rows = dt.AsEnumerable();
+            if (!string.IsNullOrEmpty(tableName))
+                rows = rows.Where(row => row.Field<String>("TABLE_NAME") == tableName);
+            rows = rows.Where(row => row.Field<bool>("PRIMARY_KEY"))
                 .OrderBy(row => row.Field<String>("TABLE_NAME")).ThenBy(row => row.Field<int>("ORDINAL_POSITION"));
             dt = rows.Any() ? rows.CopyToDataTable() : dt.Clone();
-
             for (int i = 0; i < dt.Rows.Count; i++)
             {
                 var pk = new PrimaryKey();
@@ -388,10 +401,20 @@ namespace ErikEJ.SQLiteScripting
 
         public List<SqlCeScripting.Constraint> GetAllForeignKeys()
         {
+            return GetForeignKeys();
+        }
+
+         private List<SqlCeScripting.Constraint> GetForeignKeys(string tableName = null)
+        {
             var result = new List<SqlCeScripting.Constraint>();
             var dt = _cn.GetSchema("ForeignKeys");
-            var previousConstraintName = string.Empty; 
-            
+            var rows = dt.AsEnumerable();
+            if (!string.IsNullOrEmpty(tableName))
+            {
+                rows = rows.Where(row => row.Field<String>("TABLE_NAME") == tableName);
+                dt = rows.Any() ? rows.CopyToDataTable() : dt.Clone();
+            }
+            var previousConstraintName = string.Empty;
             for (int i = 0; i < dt.Rows.Count; i++)
             {
                 var fk = new SqlCeScripting.Constraint();
@@ -485,12 +508,32 @@ namespace ErikEJ.SQLiteScripting
 
         public TabDetails GetTableDetails(string tableName)
         {
-            return new TabDetails();
+            var ret = new TabDetails();
+            var dt = _cn.GetSchema("Tables");
+            var row = dt.AsEnumerable().FirstOrDefault(rr => rr.Field<String>("TABLE_NAME") == tableName && rr.Field<String>("TABLE_TYPE") == "table");
+            if (row != null)
+            {
+                ret.TableName = row["TABLE_NAME"].ToString();
+                ret.Indexes.AddRange(GetIndexes(ret.TableName));
+                ret.PrimaryKeys.AddRange(GetPrimaryKeys(ret.TableName));
+                ret.FkConstraints.AddRange(GetForeignKeys(ret.TableName));
+                ret.Columns.AddRange(GetListOfColumns("Columns",ret.TableName));
+            }
+            return ret;
         }
 
         public ViewDetails GetViewDetails(string tableName)
         {
-            return new ViewDetails();
+            var ret = new ViewDetails();
+            var dt = Schema_Views(_cn, tableName);
+            var row = dt.AsEnumerable().FirstOrDefault(rr => rr.Field<String>("TABLE_NAME") == tableName);
+            if (row != null)
+            {
+                ret.ViewName = row["TABLE_NAME"].ToString();
+                ret.Definition = row["VIEW_DEFINITION"].ToString(); 
+                ret.Columns.AddRange(GetListOfColumns("ViewColumns", ret.ViewName));
+            }
+            return ret;
         }
 
         public bool HasIdentityColumn(string tableName)

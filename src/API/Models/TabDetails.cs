@@ -15,7 +15,7 @@ namespace ErikEJ.SqlCeScripting
         {
             Columns = new List<Column>();
             PrimaryKeys = new List<PrimaryKey>();
-            Constraints = new List<Constraint>();
+            FkConstraints = new List<Constraint>();
             Indexes = new List<Index>();
         }
         public string Schema;
@@ -24,7 +24,7 @@ namespace ErikEJ.SqlCeScripting
 
         public List<Column> Columns;
         public List<PrimaryKey> PrimaryKeys;
-        public List<Constraint> Constraints;
+        public List<Constraint> FkConstraints;
         public List<Index> Indexes;
     }
 }

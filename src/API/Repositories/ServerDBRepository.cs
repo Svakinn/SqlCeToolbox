@@ -490,7 +490,7 @@ namespace ErikEJ.SqlCeScripting
                 ORDER BY FKSchemaName, FK_TABLE_NAME, FK_CONSTRAINT_NAME, fc.constraint_column_id"
                 , new AddToListDelegate<Constraint>( AddToListConstraints) );
                 //Right no we have all columns joined in.. the task to remove duplicates records by FK_constraint_name and populate the columns and UniQueColumns
-                 ret.Constraints = RepositoryHelper.GetGroupForeingKeys(fatList, fatList.Select(t => t.ConstraintTableName).Distinct().ToList());
+                 ret.FkConstraints = RepositoryHelper.GetGroupForeingKeys(fatList, fatList.Select(t => t.ConstraintTableName).Distinct().ToList());
             }
             return ret;
         }

@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1709:IdentifiersShouldBeCasedCorrectly", MessageId = "Ce"), TestFixture]
     public class SqlCeScriptingTestFixture
     {
+
         private enum SchemaType
         { 
             NoConstraints,
@@ -18,7 +19,10 @@ using System.Text.RegularExpressions;
             DataReaderTest
         }
 
-        private const string dbPath = @"C:\Code\SqlCeToolbox\src\API\SqlCeScripting40\Tests\";
+        public string projPath = "";
+
+        //project path is calculated from the bin directory (bin\Release\) thus "../../"
+        private const string dbPath = @"../../"; //@"C:\Code\SqlCeToolbox\src\API\SqlCeScripting40\Tests\";
         private string chinookSQLiteConnectionString = string.Format(
                 @"Data Source={0}chinook.db", dbPath);
         private string dtoConnectionString = string.Format(
@@ -28,7 +32,7 @@ using System.Text.RegularExpressions;
         private string db21Conn = string.Format(
             @"Data Source={0}DB21.sqlite", dbPath);
 
-    private const string sdfConnectionString = @"Data Source=C:\data\sqlce\test\ams40.sdf;Max Database Size=512";
+        private const string sdfConnectionString = @"Data Source=C:\data\sqlce\test\ams40.sdf;Max Database Size=512";
         private const string sdfConnectionString2 = @"Data Source=C:\data\sqlce\test\PFIZER_DB40.sdf";
         private const string serverConnectionString = @"data source=.;Initial Catalog=AdventureWorksLT2012;Integrated Security=true";
         private const string serverAWConnectionString = @"data source=(localdb)\Mssqllocaldb;Initial Catalog=AdventureWorks2014;Integrated Security=true";
@@ -44,6 +48,7 @@ using System.Text.RegularExpressions;
         [Test]
         public void TestServerMigration()
         {
+           
             string path = @"C:\temp\testChinook40.sqlce";
             using (IRepository sourceRepository = new DB4Repository(chinookConnectionString))
             {
