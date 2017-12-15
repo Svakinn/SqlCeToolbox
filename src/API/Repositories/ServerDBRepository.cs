@@ -334,7 +334,8 @@ namespace ErikEJ.SqlCeScripting
 
         public List<string> GetAllTableNames()
         {
-            return ExecuteReader(
+            //hmm
+            return ExecuteReader( 
                 "select [name] from sys.tables WHERE type = 'U' AND is_ms_shipped = 0 ORDER BY [name];"
                 , new AddToListDelegate<string>(AddToListString));
         }
@@ -426,8 +427,8 @@ namespace ErikEJ.SqlCeScripting
                 AND tab.type = 'U' AND is_ms_shipped = 0 
                 AND (cols.is_computed = 0)
                 AND DATA_TYPE <> 'sql_variant' 
-                AND schms.name name = '" + schema + @"'
-                AND tab.name name = '" + tabName + @"' 
+                AND schms.name  = '" + schema + @"'
+                AND tab.name  = '" + tabName + @"' 
 				UNION 
                 SELECT COLUMN_NAME, col.IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 
                 AUTOINC_INCREMENT =  CASE cols.is_identity  WHEN 0 THEN 0 WHEN 1 THEN IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
@@ -447,8 +448,8 @@ namespace ErikEJ.SqlCeScripting
                 AND tab.type = 'U' AND is_ms_shipped = 0 
                 AND (cc.is_computed = 1 AND cc.is_persisted = 1)
                 AND DATA_TYPE <> 'sql_variant' 
-                AND schms.name name = '" + schema + @"'
-                AND tab.name name = '" + tabName + @"' 
+                AND schms.name  = '" + schema + @"'
+                AND tab.name  = '" + tabName + @"' 
 				ORDER BY col.TABLE_NAME, col.ORDINAL_POSITION ASC "
                 , new AddToListDelegate<Column>(AddToListColumns)));
 
@@ -484,7 +485,7 @@ namespace ErikEJ.SqlCeScripting
 		        inner join sys.tables tf on tf.object_id = f.referenced_object_id
 		        inner join sys.schemas sf on sf.schema_id = tf.schema_id
 		        INNER JOIN sys.foreign_key_columns AS fc ON f.OBJECT_ID = fc.constraint_object_id and fc.parent_object_id = t.object_id 
-                WHERE S.name =  =  '" + schema + @"' and 
+                WHERE S.name =  '" + schema + @"' and 
                 T.name =  '" + tabName + @"' and 
                 T.[type] = 'U' AND t.is_ms_shipped = 0 
                 ORDER BY FKSchemaName, FK_TABLE_NAME, FK_CONSTRAINT_NAME, fc.constraint_column_id"
@@ -599,8 +600,8 @@ namespace ErikEJ.SqlCeScripting
                 AND tab.type = 'V' AND is_ms_shipped = 0 
                 AND (cols.is_computed = 0)
                 AND DATA_TYPE <> 'sql_variant' 
-                AND schms.name name = '" + schema + @"'
-                AND tab.name name = '" + tabName + @"' 
+                AND schms.name = '" + schema + @"'
+                AND tab.name = '" + tabName + @"' 
                 UNION 
                 SELECT COLUMN_NAME, col.IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 
                 AUTOINC_INCREMENT =  CASE cols.is_identity  WHEN 0 THEN 0 WHEN 1 THEN IDENT_INCR('[' + col.TABLE_SCHEMA + '].[' + col.TABLE_NAME + ']')  END, 
@@ -620,8 +621,8 @@ namespace ErikEJ.SqlCeScripting
                 AND tab.type = 'V' AND is_ms_shipped = 0 
                 AND (cc.is_computed = 1 AND cc.is_persisted = 1)
                 AND DATA_TYPE <> 'sql_variant' 
-                AND schms.name name = '" + schema + @"'
-                AND tab.name name = '" + tabName + @"' 
+                AND schms.name = '" + schema + @"'
+                AND tab.name = '" + tabName + @"' 
 				ORDER BY col.TABLE_NAME, col.ORDINAL_POSITION ASC "
                 , new AddToListDelegate<Column>(AddToListColumns)));
             }
@@ -768,7 +769,7 @@ namespace ErikEJ.SqlCeScripting
         public List<Index> GetIndexesFromTable(string tableName)
         {
             return ExecuteReader(
-                "select top 4096	OBJECT_NAME(i.object_id) AS TABLE_NAME, i.name AS INDEX_NAME, 0 AS PRIMARY_KEY, " +
+                "select OBJECT_NAME(i.object_id) AS TABLE_NAME, i.name AS INDEX_NAME, 0 AS PRIMARY_KEY, " +
                 "i.is_unique AS [UNIQUE], CAST(0 AS bit) AS [CLUSTERED], CAST(ic.key_ordinal AS int) AS ORDINAL_POSITION, c.name AS COLUMN_NAME, ic.is_descending_key AS SORT_ORDER, '" + tableName + "' AS original " +
                 "from sys.indexes i left outer join     sys.index_columns ic on i.object_id = ic.object_id and i.index_id = ic.index_id " +
                 "left outer join sys.columns c on c.object_id = ic.object_id and c.column_id = ic.column_id " +

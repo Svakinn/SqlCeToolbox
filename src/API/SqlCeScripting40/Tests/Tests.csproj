@@ -78,6 +78,7 @@
     <Compile Include="GeneratorTest\Test.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RepoTest\SQLiteTests.cs" />
+    <Compile Include="RepoTest\SQLServerAdventureWorkTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\ISqlCeScripting.csproj">
