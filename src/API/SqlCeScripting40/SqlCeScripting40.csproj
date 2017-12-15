@@ -175,6 +175,11 @@
     </BootstrapperPackage>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>echo "copy: $(TargetDir)$(ProjectName) to $(SolutionDir)..\GUI\lib\$(ProjectName)"
+copy /Y "$(TargetDir)$(ProjectName).dll" "$(SolutionDir)..\GUI\lib\$(ProjectName).dll"
+copy /Y "$(TargetDir)$(ProjectName).pdb" "$(SolutionDir)..\GUI\lib\$(ProjectName).pdb"</PostBuildEvent>
+  </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
