@@ -46,6 +46,9 @@
     <Reference Include="EntityFrameworkCore.SqlServerCompact40, Version=2.0.1.0, Culture=neutral, PublicKeyToken=9af395b34ac99006, processorArchitecture=MSIL">
       <HintPath>..\packages\EntityFrameworkCore.SqlServerCompact40.2.0.1.1\lib\net461\EntityFrameworkCore.SqlServerCompact40.dll</HintPath>
     </Reference>
+    <Reference Include="ISqlCeScripting">
+      <HintPath>..\lib\ISqlCeScripting.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.Data.Sqlite, Version=2.0.0.0, Culture=neutral, PublicKeyToken=adb9793829ddae60, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Data.Sqlite.Core.2.0.0\lib\netstandard2.0\Microsoft.Data.Sqlite.dll</HintPath>
     </Reference>
@@ -149,14 +152,20 @@
       <Link>ModelBuilder\DgmlBuilder.cs</Link>
     </Compile>
     <Compile Include="EFCoreModelBuilder.cs" />
+    <Compile Include="EfcoreReversEngineerViews.cs" />
     <Compile Include="ReverseEngineer\DatabaseType.cs" />
     <Compile Include="EFCoreReverseEngineer.cs" />
     <Compile Include="ReverseEngineer\EFCoreReverseEngineerResult.cs" />
     <Compile Include="PathHelper.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ReverseEngineer\ViewContextClassBuilder.cs" />
+    <Compile Include="ReverseEngineer\EmtyContextClassBuilder.cs" />
+    <Compile Include="ReverseEngineer\FileBuilder.cs" />
     <Compile Include="ReverseEngineer\Inflector.cs" />
     <Compile Include="ReverseEngineer\InflectorPluralizer.cs" />
     <Compile Include="ReverseEngineer\ReverseEngineerOptions.cs" />
+    <Compile Include="ReverseEngineer\TypeMapper.cs" />
+    <Compile Include="ReverseEngineer\ViewBuilder.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Key.snk" />

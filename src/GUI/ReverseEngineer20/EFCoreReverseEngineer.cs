@@ -7,7 +7,7 @@ using ReverseEngineer20.ReverseEngineer;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
+using System.IO;  //ss
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -153,5 +153,93 @@ namespace ReverseEngineer20
 
             return className.Replace(" ", string.Empty);
         }
+
+        #region view creation
+        public EfCoreReverseEngineerResult GenerateViewFiles(ReverseEngineerOptions reverseEngineerOptions)
+        {
+            var errors = new List<string>();
+            var warnings = new List<string>();
+            var reporter = new OperationReporter(
+                new OperationReportHandler(
+                    m => errors.Add(m),
+                    m => warnings.Add(m)));
+
+            // Add base services for scaffolding
+            var serviceCollection = new ServiceCollection();
+
+            serviceCollection
+                .AddScaffolding(reporter)
+                .AddSingleton<IOperationReporter, OperationReporter>()
+                .AddSingleton<IOperationReportHandler, OperationReportHandler>();
+
+            if (reverseEngineerOptions.UseHandleBars)
+            {
+                serviceCollection.AddHandlebarsScaffolding(reverseEngineerOptions.ProjectPath);
+            }
+
+            if (reverseEngineerOptions.UseInflector)
+            {
+                serviceCollection.AddSingleton<IPluralizer, InflectorPluralizer>();
+            }
+
+            // Add database provider services
+            switch (reverseEngineerOptions.DatabaseType)
+            {
+                case DatabaseType.SQLCE35:
+                    throw new NotImplementedException();
+                case DatabaseType.SQLCE40:
+                    var sqlCeProvider = new SqlCeDesignTimeServices();
+                    sqlCeProvider.ConfigureDesignTimeServices(serviceCollection);
+                    break;
+                case DatabaseType.SQLServer:
+                    var provider = new SqlServerDesignTimeServices();
+                    provider.ConfigureDesignTimeServices(serviceCollection);
+                    break;
+                case DatabaseType.SQLite:
+                    var sqliteProvider = new SqliteDesignTimeServices();
+                    sqliteProvider.ConfigureDesignTimeServices(serviceCollection);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            var serviceProvider = serviceCollection.BuildServiceProvider();
+            var generator = serviceProvider.GetService<IModelScaffolder>();
+
+            var filePaths = generator.Generate(
+                reverseEngineerOptions.ConnectionString,
+                reverseEngineerOptions.Tables,
+                new List<string>(),
+                reverseEngineerOptions.ProjectPath,
+                reverseEngineerOptions.OutputPath,
+                reverseEngineerOptions.ProjectRootNamespace,
+                reverseEngineerOptions.ContextClassName,
+                !reverseEngineerOptions.UseFluentApiOnly,
+                overwriteFiles: true,
+                useDatabaseNames: reverseEngineerOptions.UseDatabaseNames);
+            // Explanation: Use table and column names directly from the database.
+
+            foreach (var file in filePaths.EntityTypeFiles)
+            {
+                PostProcess(file, reverseEngineerOptions.IdReplace);
+            }
+            PostProcess(filePaths.ContextFile, reverseEngineerOptions.IdReplace);
+
+            if (!reverseEngineerOptions.IncludeConnectionString)
+            {
+                PostProcessContext(filePaths.ContextFile);
+            }
+
+            var result = new EfCoreReverseEngineerResult
+            {
+                EntityErrors = errors,
+                EntityWarnings = warnings,
+                EntityTypeFilePaths = filePaths.EntityTypeFiles,
+                ContextFilePath = filePaths.ContextFile,
+            };
+
+            return result;
+        }
+        #endregion
     }
 }

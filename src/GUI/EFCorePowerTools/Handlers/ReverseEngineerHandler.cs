@@ -1,4 +1,5 @@
 ﻿using EnvDTE;
+//using ErikEJ.SqlCeScripting;
 using ErikEJ.SqlCeToolbox.Dialogs;
 using ErikEJ.SqlCeToolbox.Helpers;
 using ReverseEngineer20;
@@ -94,7 +95,7 @@ namespace EFCorePowerTools.Handlers
                     Tables = ptd.Tables
                 };
 
-                _package.Dte2.StatusBar.Text = "Generating code...";
+                _package.Dte2.StatusBar.Text = "Generating pocos for tables...";
 
                 if (modelDialog.UseHandelbars)
                 {
@@ -103,6 +104,10 @@ namespace EFCorePowerTools.Handlers
                         project.ProjectItems.AddFromDirectory(Path.Combine(projectPath, "CodeTemplates"));
                     }
                 }
+                //One thing, if there are no tables specified the generator will build all the tables
+                //in that case we add table name that does not exist
+                if (ptd.Tables.Count == 0)
+                    options.Tables.Add("xxxDoesNotExistTable");
 
                 var revEngResult = revEng.GenerateFiles(options);
 
@@ -113,6 +118,39 @@ namespace EFCorePowerTools.Handlers
                         project.ProjectItems.AddFromFile(filePath);
                     }
                 }
+                //Generate poco for views
+                if (ptd.Views.Count > 0)
+                {
+                    _package.Dte2.StatusBar.Text = "Collecting view details...";
+                    var revEngV = new EfcoreReversEngineerViews();
+                    options.Tables = ptd.Views;
+                    var viewDetails = new List<ErikEJ.SqlCeScripting.ViewDetails>();
+                    using (var repository = ErikEJ.SqlCeToolbox.Helpers.RepositoryHelper.CreateRepository(dbInfo))
+                    {
+                        foreach (var vName in ptd.Views)
+                        {
+                            viewDetails.Add(repository.GetViewDetails(vName));
+                        }
+                    }
+                    _package.Dte2.StatusBar.Text = "Generating poco for views...";
+                    var nameSpace = options.ProjectRootNamespace; // project.Properties.Item("DefaultNamespace");
+                    if (options.OutputPath.Length > 0)
+                        nameSpace += ("."+options.OutputPath.Replace("\\", ""));
+                    var revEngResultV = revEngV.GenerateFiles(options,viewDetails, nameSpace.ToString());
+                    if (modelDialog.SelectedTobeGenerated == 0 || modelDialog.SelectedTobeGenerated == 2)
+                    {
+                        foreach (var filePath in revEngResultV.EntityTypeFilePaths)
+                        {
+                            project.ProjectItems.AddFromFile(filePath);
+                        }
+                    }
+                }
+                //Generate poco for SP
+                if (ptd.SP.Count > 0)
+                {
+                    //ToDo stored procedures
+                }
+                //
                 if (modelDialog.SelectedTobeGenerated == 0 || modelDialog.SelectedTobeGenerated == 1)
                 {
                     project.ProjectItems.AddFromFile(revEngResult.ContextFilePath);
@@ -136,6 +174,7 @@ namespace EFCorePowerTools.Handlers
                     var nuGetHelper = new NuGetHelper();
                     await nuGetHelper.InstallPackageAsync(packageResult.Item2, project);
                 }
+
                 var duration = DateTime.Now - startTime;
                 _package.Dte2.StatusBar.Text = $"Reverse engineer completed in {duration:h\\:mm\\:ss}";
 
